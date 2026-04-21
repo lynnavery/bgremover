@@ -1,0 +1,445 @@
+@font-face {
+    font-family: "ProggyClean";
+    src: url("ProggyCleanNerdFont-Regular.ttf") format("truetype");
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    background: white;
+    background-image: radial-gradient(#d8d8d8 0.06rem, transparent 0);
+    background-size: 0.75rem 0.75rem;
+    background-position: -0.15rem -0.15rem;
+    margin: 0;
+    font-family: "ProggyClean", monospace;
+    font-size: 24px;
+    color: #111;
+    overflow-x: hidden;
+}
+
+/* ── app container ── */
+#app {
+    max-width: 900px;
+    margin: 0 auto;
+    background: white;
+}
+
+/* ── stats bars ── */
+#stats-bar,
+.stats-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.75rem 1.5rem;
+    padding: 0.6rem 1.125rem;
+    background: white;
+    align-items: baseline;
+    border-bottom: 1px solid #e8e8e8;
+}
+
+.stat-group {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    min-width: 300px;
+    flex: 1;
+}
+
+/* ping groups never shrink or grow — hold their size */
+.stat-group--ping {
+    min-width: auto;
+    flex: none;
+}
+
+.stat-label {
+    font-weight: normal;
+    flex-shrink: 0;
+    color: #888;
+}
+.title {
+    padding-right: 32px;
+}
+a.stat-label {
+    text-decoration: none;
+    color: inherit;
+}
+a.stat-label:hover {
+    text-decoration: underline;
+    color: #888;
+}
+
+.stat-bar-wrap {
+    flex: 1;
+    height: 6px;
+    background: #ebebeb;
+    overflow: hidden;
+}
+
+.stat-bar {
+    height: 100%;
+    width: 0%;
+    background: #888;
+    transition: width 0.5s ease;
+}
+
+.stat-pct {
+    width: 13.5rem;
+    flex-shrink: 0;
+    white-space: nowrap;
+    color: #888;
+}
+
+/* ── status dot ── */
+.status-dot {
+    width: 10px;
+    height: 10px;
+    background: #ddd;
+    flex-shrink: 0;
+    font-size: 0;
+}
+
+.status-dot.up {
+    background: #2ecc71;
+}
+.status-dot.down {
+    background: #e74c3c;
+}
+
+/* ── buttons ── */
+.card-btns {
+    display: flex;
+    gap: 0.45rem;
+}
+
+.restart-btn,
+.stop-btn,
+.update-btn {
+    font-family: "ProggyClean", monospace;
+    font-size: 24px;
+    padding: 0.5rem 1.125rem;
+    flex: 1;
+    background: white;
+    border: 1px solid #ddd;
+    cursor: pointer;
+    color: #666;
+    transition:
+        background 0.1s,
+        border-color 0.1s,
+        color 0.1s;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.restart-btn:hover:not(:disabled) {
+    background: #fff0f0;
+    border-color: #c0392b;
+    color: #c0392b;
+}
+
+.stop-btn:hover:not(:disabled) {
+    background: #fff8ec;
+    border-color: #e67e22;
+    color: #e67e22;
+}
+
+.update-btn:hover:not(:disabled) {
+    background: #f0faf4;
+    border-color: #27ae60;
+    color: #27ae60;
+}
+
+.restart-btn:disabled,
+.stop-btn:disabled,
+.update-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* ── card ── */
+.card {
+    background: white;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem;
+    gap: 0.6rem;
+    border: 1px solid #ebebeb;
+}
+
+.card-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-decoration: none;
+    color: #111;
+}
+
+.card-link .card-icon {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+}
+.card-link span {
+    font-family: "ProggyClean", monospace;
+}
+.card-link:hover span {
+    text-decoration: underline;
+}
+
+/* ── confirm overlay ── */
+#confirm-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+}
+
+#confirm-overlay.active {
+    display: flex;
+}
+
+#confirm-box {
+    background: white;
+    border: 1px solid #ddd;
+    padding: 2.25rem;
+    max-width: 450px;
+    width: 90%;
+    text-align: center;
+    font-family: "ProggyClean", monospace;
+}
+
+#confirm-msg {
+    margin: 0 0 1.5rem;
+}
+#confirm-btns {
+    display: flex;
+    gap: 0.75rem;
+}
+
+#confirm-yes,
+#confirm-no {
+    flex: 1;
+    padding: 0.75rem;
+    font-family: "ProggyClean", monospace;
+    font-size: 24px;
+    cursor: pointer;
+    border: 1px solid #ddd;
+}
+
+#confirm-yes {
+    background: #fff0f0;
+    border-color: #c0392b;
+    color: #c0392b;
+}
+#confirm-no {
+    background: white;
+    color: #666;
+}
+#confirm-no:hover {
+    background: #f8f8f8;
+}
+
+/* ── spinner ── */
+.loader {
+    width: 21px;
+    height: 21px;
+    border: 3px dotted #aaa;
+    border-radius: 50%;
+    display: inline-block;
+    box-sizing: border-box;
+    animation: rotation 2s linear infinite;
+    vertical-align: middle;
+}
+
+@keyframes rotation {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* ── drop zone ── */
+#drop-zone {
+    padding: 3.75rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+    background-image: radial-gradient(white 0.06rem, transparent 0);
+    background-size: 0.75rem 0.75rem;
+    background-color: #e8e8e8;
+    background-position: -0.225rem -0.345rem;
+    transition: background-color 0.15s;
+}
+
+#drop-zone:hover,
+#drop-zone.over {
+    background-color: #fff0f0;
+}
+
+/* ── queue list ── */
+#queue-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+#queue-list li {
+    border-bottom: 1px solid #f4f4f4;
+    padding: 18px;
+}
+
+/* ── preview canvas ── */
+#preview {
+    display: block;
+    max-width: 100%;
+}
+
+/* ── name input ── */
+#name-input {
+    font-family: "ProggyClean", monospace;
+    font-size: 24px;
+    border: 1px solid #ddd;
+    border-top: none;
+    border-bottom: none;
+    padding: 0.525rem 0.75rem;
+    outline: none;
+    width: 0;
+    background: white;
+    color: #111;
+}
+
+#name-input:focus {
+    border-color: #c0392b;
+    border-top: 1px solid #c0392b;
+    border-bottom: 1px solid #c0392b;
+}
+
+/* ── processing pulse ── */
+@keyframes pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.35;
+    }
+}
+.bar-processing {
+    animation: pulse 1s ease-in-out infinite;
+}
+
+/* ── page wrap ── */
+.page-wrap {
+    max-width: 900px;
+}
+
+/* ── canvas wrap ── */
+.canvas-wrap {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    margin: 0.75rem 0;
+    background: white;
+}
+
+/* ── rotation pill ── */
+.pill-wrap {
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+}
+
+#rotation-pill {
+    display: flex;
+    align-items: stretch;
+    height: 45px;
+    border: 1px solid #ddd;
+    background: white;
+    white-space: nowrap;
+    overflow: hidden;
+    z-index: 2;
+    border-radius: 6px;
+    box-shadow: 0 1.5px 6px rgba(0, 0, 0, 0.08);
+}
+
+.pill-btn {
+    font-family: "ProggyClean", monospace;
+    font-size: 24px;
+    padding: 0 18px;
+    background: white;
+    border: none;
+    border-left: 1px solid #ebebeb;
+    cursor: pointer;
+    color: #888;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+        background 0.1s,
+        color 0.1s;
+}
+
+.pill-btn:first-child {
+    border-left: none;
+}
+
+.pill-btn:hover:not(:disabled) {
+    background: #f8f8f8;
+    color: #111;
+}
+
+#angle-label {
+    font-family: "ProggyClean", monospace;
+    font-size: 24px;
+    width: 78px;
+    text-align: center;
+    border-left: 1px solid #ebebeb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #111;
+}
+
+.pill-reset {
+    position: absolute;
+    top: -12px;
+    right: -12px;
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    border: 1px solid #ddd;
+    background: white;
+    color: #c0392b;
+    font-family: "ProggyClean", monospace;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1.5px 4.5px rgba(0, 0, 0, 0.08);
+    transition: background 0.1s;
+}
+
+.pill-reset:hover {
+    background: #fff0f0;
+}
+
+/* ── responsive grid ── */
+.center {
+    min-height: 80vh;
+    max-width: 900px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
+    gap: 0.75rem;
+    padding: 0.75rem;
+}

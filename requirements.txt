@@ -1,0 +1,11 @@
+click>=8.1
+gradio_client>=1.0
+Pillow>=10.0
+deskew>=1.5
+scikit-image>=0.21
+numpy>=1.24
+opencv-python>=4.8
+tqdm>=4.66
+blessed>=1.20
+yaspin>=3.0
+rembg[cpu]>=2.0

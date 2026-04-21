@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>BG Remover</title>
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <div id="app">
+            <!-- ── Phase 1: Drop & Process ─────────────────────────────────────── -->
+            <div id="phase-drop">
+                <div class="stats-bar">
+                    <div class="stat-group stat-group--ping">
+                        <span
+                            class="stat-label title"
+                            style="font-weight: 700; color: black"
+                            >background remover</span
+                        >
+                        <span class="stat-label">model</span>
+                        <span class="stat-pct" id="model-status"
+                            >not loaded</span
+                        >
+                    </div>
+                    <button
+                        id="go-review"
+                        class="update-btn"
+                        disabled
+                        style="flex: 0; white-space: nowrap; margin-left: auto"
+                    >
+                        next
+                    </button>
+                </div>
+
+                <div class="--wrap">
+                    <div id="drop-zone">
+                        <p style="margin: 0; color: #aaa; display: inline">
+                            drop images here or click to select
+                        </p>
+                        <input
+                            type="file"
+                            id="file-input"
+                            multiple
+                            accept="image/*,.zip"
+                            style="display: none"
+                        />
+                    </div>
+                    <ul id="queue-list"></ul>
+                </div>
+            </div>
+
+            <!-- ── Phase 2: Review ─────────────────────────────────────────────── -->
+            <div id="phase-review" hidden>
+                <div class="stats-bar">
+                    <button
+                        id="btn-back"
+                        class="restart-btn"
+                        style="flex: none"
+                    >
+                        ← back
+                    </button>
+                    <span
+                        id="review-counter"
+                        class="stat-label"
+                        style="color: #888; flex: none"
+                    ></span>
+                    <input
+                        id="name-input"
+                        type="text"
+                        style="flex: 1; min-width: 0"
+                    />
+                    <span style="color: #bbb; flex: none">.png</span>
+                    <button
+                        id="btn-download-all"
+                        class="update-btn"
+                        style="
+                            flex: none;
+                            margin-left: auto;
+                            line-height: 1;
+                            padding: 0.5rem 1.5rem 0.5rem 0.9rem;
+                        "
+                        title="download all as zip"
+                    >&#xF024D;</button>
+                </div>
+
+                <div class="page-wrap">
+                    <div class="canvas-wrap">
+                        <canvas id="preview"></canvas>
+                        <div class="pill-wrap">
+                            <div id="rotation-pill">
+                                <button
+                                    class="pill-btn nerd-icon"
+                                    data-delta="-1"
+                                >
+                                    &#xF0E2;
+                                </button>
+                                <button class="pill-btn" data-delta="-0.1">
+                                    -.1°
+                                </button>
+                                <span id="angle-label">0.0°</span>
+                                <button class="pill-btn" data-delta="0.1">
+                                    +.1°
+                                </button>
+                                <button
+                                    class="pill-btn nerd-icon"
+                                    data-delta="1"
+                                >
+                                    &#xF01E;
+                                </button>
+                            </div>
+                            <button class="pill-reset" id="btn-reset">x</button>
+                        </div>
+                    </div>
+
+                    <div class="card-btns">
+                        <button
+                            class="restart-btn"
+                            id="btn-prev"
+                            style="color: #bbb"
+                        >
+                            ← prev
+                        </button>
+                        <button class="update-btn" id="btn-next">next →</button>
+                    </div>
+
+                    <p
+                        style="
+                            margin: 0.5rem 0;
+                            color: #bbb;
+                            text-align: center;
+                        "
+                    >
+                        ← → rotate (shift = 1°) &nbsp;|&nbsp; ↑ ↓ navigate
+                        &nbsp;|&nbsp; &#xF0311; next
+                    </p>
+                </div>
+            </div>
+        </div>
+        <!-- #app -->
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+        <script type="module">
+            // ── State ──────────────────────────────────────────────────────────────────
+            let worker = null;
+            let workerReady = false;
+            let processingBusy = false;
+            let nextId = 0;
+
+            // { id, file, status: 'pending'|'processing'|'done'|'error', blob, errorMsg }
+            const queue = [];
+
+            // { name, blob, rotation }
+            let reviewItems = [];
+            let currentIdx = 0;
+            let currentBitmap = null;
+
+            const PREVIEW_MAX_W = 840;
+            const PREVIEW_MAX_H = 570;
+
+            // ── Worker ─────────────────────────────────────────────────────────────────
+            function startWorker() {
+                if (worker) return;
+                worker = new Worker("worker.js", { type: "module" });
+                worker.onmessage = handleWorkerMsg;
+                worker.postMessage({ type: "init" });
+                setModelStatus("loading…", 10);
+            }
+
+            function handleWorkerMsg({ data: msg }) {
+                switch (msg.type) {
+                    case "progress":
+                        setModelStatus(msg.message, 50);
+                        break;
+                    case "ready":
+                        workerReady = true;
+                        setModelStatus("ready", 100);
+                        processNext();
+                        break;
+                    case "done": {
+                        const item = queue.find((i) => i.id === msg.id);
+                        if (item) {
+                            item.status = "done";
+                            item.blob = new Blob([msg.buffer], {
+                                type: "image/png",
+                            });
+                            updateRow(item);
+                        }
+                        processingBusy = false;
+                        checkAllDone();
+                        processNext();
+                        break;
+                    }
+                    case "error": {
+                        if (msg.id === -1) {
+                            // worker failed to initialise
+                            setModelStatus("failed: " + msg.error);
+                            break;
+                        }
+                        const item = queue.find((i) => i.id === msg.id);
+                        if (item) {
+                            item.status = "error";
+                            item.errorMsg = msg.error;
+                            updateRow(item);
+                        }
+                        processingBusy = false;
+                        processNext();
+                        break;
+                    }
+                }
+            }
+
+            // Decode any image file to a PNG data URL.
+            // HEIC/HEIF are pre-converted via heic2any (pure-JS decoder) since browsers
+            // can't reliably decode them from blob URLs or in workers.
+            async function fileToDataUrl(file) {
+                let source = file;
+                if (file.type === "image/heic" || file.type === "image/heif") {
+                    const out = await window.heic2any({
+                        blob: file,
+                        toType: "image/png",
+                    });
+                    source = Array.isArray(out) ? out[0] : out;
+                }
+                const url = URL.createObjectURL(source);
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement("canvas");
+                        canvas.width = img.naturalWidth;
+                        canvas.height = img.naturalHeight;
+                        canvas.getContext("2d").drawImage(img, 0, 0);
+                        URL.revokeObjectURL(url);
+                        resolve(canvas.toDataURL("image/png"));
+                    };
+                    img.onerror = () => {
+                        URL.revokeObjectURL(url);
+                        reject(new Error("image decode failed"));
+                    };
+                    img.src = url;
+                });
+            }
+
+            async function processNext() {
+                if (!workerReady || processingBusy) return;
+                const item = queue.find((i) => i.status === "pending");
+                if (!item) return;
+                item.status = "processing";
+                updateRow(item);
+                processingBusy = true;
+                try {
+                    const dataUrl = await fileToDataUrl(item.file);
+                    worker.postMessage({
+                        type: "process",
+                        id: item.id,
+                        dataUrl,
+                    });
+                } catch (err) {
+                    item.status = "error";
+                    item.errorMsg = "decode failed";
+                    updateRow(item);
+                    processingBusy = false;
+                    checkAllDone();
+                    processNext();
+                }
+            }
+
+            function checkAllDone() {
+                const finished = queue.filter(
+                    (i) => i.status === "done" || i.status === "error",
+                ).length;
+                const done = queue.filter((i) => i.status === "done").length;
+                if (finished === queue.length && done > 0) {
+                    const btn = document.getElementById("go-review");
+                    btn.disabled = false;
+                    btn.textContent = `review (${done} image${done !== 1 ? "s" : ""})`;
+                }
+            }
+
+            function setModelStatus(text, pct) {
+                document.getElementById("model-status").textContent = text;
+            }
+
+            // ── Drop Zone ──────────────────────────────────────────────────────────────
+            const dropZone = document.getElementById("drop-zone");
+            const fileInput = document.getElementById("file-input");
+
+            dropZone.addEventListener("click", () => fileInput.click());
+            dropZone.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                dropZone.classList.add("over");
+            });
+            dropZone.addEventListener("dragleave", () =>
+                dropZone.classList.remove("over"),
+            );
+            dropZone.addEventListener("drop", (e) => {
+                e.preventDefault();
+                dropZone.classList.remove("over");
+                addFiles([...e.dataTransfer.files]);
+            });
+            fileInput.addEventListener("change", () => {
+                addFiles([...fileInput.files]);
+                fileInput.value = "";
+            });
+
+            const IMAGE_MIME = {
+                png: "image/png",
+                jpg: "image/jpeg",
+                jpeg: "image/jpeg",
+                webp: "image/webp",
+                gif: "image/gif",
+                bmp: "image/bmp",
+                tif: "image/tiff",
+                tiff: "image/tiff",
+                heic: "image/heic",
+                heif: "image/heif",
+                avif: "image/avif",
+            };
+
+            function imageMime(name) {
+                return IMAGE_MIME[name.split(".").pop().toLowerCase()] || "";
+            }
+
+            async function addFiles(files) {
+                console.log(
+                    "addFiles called with",
+                    files.length,
+                    "file(s):",
+                    [...files].map((f) => `${f.name} [${f.type}]`),
+                );
+                const toEnqueue = [];
+
+                for (const file of files) {
+                    if (file.type.startsWith("image/")) {
+                        toEnqueue.push(file);
+                    } else if (
+                        file.name.endsWith(".zip") ||
+                        file.type === "application/zip"
+                    ) {
+                        console.log(
+                            "zip detected:",
+                            file.name,
+                            "JSZip available:",
+                            typeof window.JSZip,
+                        );
+                        try {
+                            const zip = await window.JSZip.loadAsync(file);
+                            const entries = Object.entries(zip.files);
+                            console.log(
+                                "zip entries:",
+                                entries.map(([p]) => p),
+                            );
+                            for (const [path, entry] of entries) {
+                                if (entry.dir) continue;
+                                const name = path.split("/").pop();
+                                if (name.startsWith("._")) continue;
+                                const mime = imageMime(name);
+                                console.log(
+                                    "  entry:",
+                                    name,
+                                    "mime:",
+                                    mime || "(skipped)",
+                                );
+                                if (!mime) continue;
+                                const blob = await entry.async("blob");
+                                toEnqueue.push(
+                                    new File([blob], name, { type: mime }),
+                                );
+                            }
+                        } catch (err) {
+                            console.error("zip error:", err);
+                            setModelStatus("zip error: " + err.message);
+                        }
+                    } else {
+                        console.log(
+                            "skipped (not image or zip):",
+                            file.name,
+                            file.type,
+                        );
+                    }
+                }
+
+                console.log("toEnqueue:", toEnqueue.length, "files");
+                if (!toEnqueue.length) return;
+                for (const file of toEnqueue) {
+                    const item = {
+                        id: nextId++,
+                        file,
+                        status: "pending",
+                        blob: null,
+                        errorMsg: "",
+                    };
+                    queue.push(item);
+                    addRow(item);
+                }
+                startWorker();
+                if (workerReady && !processingBusy) processNext();
+            }
+
+            function addRow(item) {
+                const name =
+                    item.file.name.length > 40
+                        ? item.file.name.slice(0, 37) + "…"
+                        : item.file.name;
+                const li = document.createElement("li");
+                li.id = `q${item.id}`;
+                li.innerHTML = `
+            <div class="stat-group">
+              <span class="stat-label" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#444" title="${item.file.name}">${name}</span>
+              <div class="stat-bar-wrap" style="max-width:180px">
+                <div class="stat-bar" id="bar${item.id}"></div>
+              </div>
+              <span class="stat-pct" id="pct${item.id}"></span>
+              <span class="status-dot" id="dot${item.id}"></span>
+            </div>`;
+                document.getElementById("queue-list").appendChild(li);
+            }
+
+            function updateRow(item) {
+                const bar = document.getElementById(`bar${item.id}`);
+                const pct = document.getElementById(`pct${item.id}`);
+                const dot = document.getElementById(`dot${item.id}`);
+                if (!bar) return;
+                switch (item.status) {
+                    case "processing":
+                        bar.style.width = "60%";
+                        bar.style.background = "#ffe200";
+                        bar.classList.add("bar-processing");
+                        pct.innerHTML = '<span class="loader"></span>';
+                        break;
+                    case "done":
+                        bar.style.width = "100%";
+                        bar.style.background = "#a1ffa4";
+                        bar.classList.remove("bar-processing");
+                        pct.textContent = "done";
+                        dot.className = "status-dot up";
+                        break;
+                    case "error":
+                        bar.style.width = "100%";
+                        bar.style.background = "#e74c3c";
+                        bar.classList.remove("bar-processing");
+                        pct.textContent = item.errorMsg
+                            ? item.errorMsg.slice(0, 20)
+                            : "error";
+                        dot.className = "status-dot down";
+                        break;
+                }
+            }
+
+            // ── Phase Switch ───────────────────────────────────────────────────────────
+            document
+                .getElementById("go-review")
+                .addEventListener("click", enterReview);
+            document
+                .getElementById("btn-back")
+                .addEventListener("click", () => {
+                    document.getElementById("phase-review").hidden = true;
+                    document.getElementById("phase-drop").hidden = false;
+                });
+
+            function enterReview() {
+                reviewItems = queue
+                    .filter((i) => i.status === "done")
+                    .map((i) => ({
+                        name: i.file.name.replace(/\.[^.]+$/, ""),
+                        blob: i.blob,
+                        rotation: 0,
+                    }));
+                if (!reviewItems.length) return;
+                document.getElementById("phase-drop").hidden = true;
+                document.getElementById("phase-review").hidden = false;
+                currentIdx = 0;
+                loadItem(0);
+            }
+
+            // ── Review ─────────────────────────────────────────────────────────────────
+            async function loadItem(idx) {
+                const item = reviewItems[idx];
+                document.getElementById("review-counter").textContent =
+                    `${idx + 1} / ${reviewItems.length}`;
+                document.getElementById("name-input").value = item.name;
+                document.getElementById("angle-label").textContent =
+                    item.rotation.toFixed(1) + "°";
+                currentBitmap = await createImageBitmap(item.blob);
+                drawPreview(item.rotation);
+            }
+
+            function drawPreview(deg) {
+                const canvas = document.getElementById("preview");
+                const rad = (deg * Math.PI) / 180;
+                const sin = Math.abs(Math.sin(rad));
+                const cos = Math.abs(Math.cos(rad));
+                const bw = currentBitmap.width,
+                    bh = currentBitmap.height;
+                const rw = bw * cos + bh * sin;
+                const rh = bw * sin + bh * cos;
+                const scale = Math.min(
+                    1,
+                    PREVIEW_MAX_W / rw,
+                    PREVIEW_MAX_H / rh,
+                );
+                canvas.width = Math.ceil(rw * scale);
+                canvas.height = Math.ceil(rh * scale);
+                const ctx = canvas.getContext("2d");
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.save();
+                ctx.scale(scale, scale);
+                ctx.translate(rw / 2, rh / 2);
+                ctx.rotate(rad);
+                ctx.drawImage(currentBitmap, -bw / 2, -bh / 2);
+                ctx.restore();
+            }
+
+            function nudgeRotation(delta) {
+                const item = reviewItems[currentIdx];
+                item.rotation = parseFloat((item.rotation + delta).toFixed(1));
+                document.getElementById("angle-label").textContent =
+                    item.rotation.toFixed(1) + "°";
+                drawPreview(item.rotation);
+            }
+
+            document
+                .querySelectorAll("[data-delta]")
+                .forEach((btn) =>
+                    btn.addEventListener("click", () =>
+                        nudgeRotation(parseFloat(btn.dataset.delta)),
+                    ),
+                );
+
+            document
+                .getElementById("btn-reset")
+                .addEventListener("click", () => {
+                    reviewItems[currentIdx].rotation = 0;
+                    document.getElementById("angle-label").textContent = "0.0°";
+                    drawPreview(0);
+                });
+
+            const nameInput = document.getElementById("name-input");
+            nameInput.addEventListener("input", (e) => {
+                reviewItems[currentIdx].name = e.target.value;
+            });
+            nameInput.addEventListener("keydown", (e) => {
+                if (e.key === "Escape") nameInput.blur();
+            });
+
+            document.addEventListener("keydown", (e) => {
+                if (document.getElementById("phase-review").hidden) return;
+                if (e.key === "Tab" && document.activeElement !== nameInput) {
+                    e.preventDefault();
+                    nameInput.focus();
+                }
+            });
+
+            document
+                .getElementById("btn-prev")
+                .addEventListener("click", () => {
+                    if (currentIdx > 0) loadItem(--currentIdx);
+                });
+            document
+                .getElementById("btn-next")
+                .addEventListener("click", () => {
+                    if (currentIdx < reviewItems.length - 1)
+                        loadItem(++currentIdx);
+                });
+
+            document.addEventListener("keydown", (e) => {
+                if (document.getElementById("phase-review").hidden) return;
+                if (
+                    document.activeElement ===
+                    document.getElementById("name-input")
+                )
+                    return;
+                if (e.key === "ArrowLeft")
+                    nudgeRotation(e.shiftKey ? -1 : -0.1);
+                else if (e.key === "ArrowRight")
+                    nudgeRotation(e.shiftKey ? 1 : 0.1);
+                else if (e.key === "ArrowUp" && currentIdx > 0)
+                    loadItem(--currentIdx);
+                else if (
+                    e.key === "ArrowDown" &&
+                    currentIdx < reviewItems.length - 1
+                )
+                    loadItem(++currentIdx);
+                else if (
+                    e.key === "Enter" &&
+                    currentIdx < reviewItems.length - 1
+                )
+                    loadItem(++currentIdx);
+            });
+
+            // ── Download ───────────────────────────────────────────────────────────────
+            async function rotateBlob(blob, deg) {
+                if (Math.abs(deg) < 0.01) return blob;
+                const bmp = await createImageBitmap(blob);
+                const rad = (deg * Math.PI) / 180;
+                const sin = Math.abs(Math.sin(rad));
+                const cos = Math.abs(Math.cos(rad));
+                const w = Math.ceil(bmp.width * cos + bmp.height * sin);
+                const h = Math.ceil(bmp.width * sin + bmp.height * cos);
+                const canvas = new OffscreenCanvas(w, h);
+                const ctx = canvas.getContext("2d");
+                ctx.translate(w / 2, h / 2);
+                ctx.rotate(rad);
+                ctx.drawImage(bmp, -bmp.width / 2, -bmp.height / 2);
+                return canvas.convertToBlob({ type: "image/png" });
+            }
+
+            document
+                .getElementById("btn-download-all")
+                .addEventListener("click", async () => {
+                    const btn = document.getElementById("btn-download-all");
+                    btn.disabled = true;
+                    btn.textContent = "building zip…";
+
+                    const zip = new JSZip();
+                    const used = new Set();
+
+                    for (const item of reviewItems) {
+                        const finalBlob = await rotateBlob(
+                            item.blob,
+                            item.rotation,
+                        );
+                        let base =
+                            (item.name || "image").replace(/[^\w\- .]/g, "_") ||
+                            "image";
+                        let fname = `${base}.png`;
+                        let n = 1;
+                        while (used.has(fname)) fname = `${base}_${n++}.png`;
+                        used.add(fname);
+                        zip.file(fname, finalBlob);
+                    }
+
+                    const zipBlob = await zip.generateAsync({ type: "blob" });
+                    const url = URL.createObjectURL(zipBlob);
+                    const a = Object.assign(document.createElement("a"), {
+                        href: url,
+                        download: "bg-removed.zip",
+                    });
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+                    btn.disabled = false;
+                    btn.textContent = "\uF024D";
+                });
+        </script>
+    </body>
+</html>

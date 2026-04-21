@@ -1,0 +1,3 @@
+[submodule "florence-2-auto-crop"]
+	path = florence-2-auto-crop
+	url = https://huggingface.co/Wi-zz/florence-2-auto-crop
