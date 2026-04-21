@@ -8,8 +8,9 @@ Open `web/index.html` in a browser (via a local server — required for the web 
 
 - Drop images or a ZIP of images onto the drop zone
 - Supports JPEG, PNG, WebP, HEIC/HEIF
-- Background removal runs locally in-browser via [RMBG-1.4](https://huggingface.co/briaai/RMBG-1.4) (Transformers.js)
+- Background removal runs locally in-browser via [RMBG-1.4](https://huggingface.co/briaai/RMBG-1.4) (Transformers.js) — no server required
 - Review page: rename files, rotate, download individually or as a ZIP
+- Crop and straighten are CLI-only
 
 ## CLI
 
@@ -57,7 +58,7 @@ python cli.py process [--remove-bg/--no-remove-bg] [--crop/--no-crop] [--straigh
 | `--overwrite` | off | Overwrite existing output files |
 | `--max-memory GB` | 12 | Cap process memory usage |
 
-## Florence-2 crop
+## Florence-2 crop (CLI only)
 
 The `florence2` crop mode uses a local [Florence-2](https://huggingface.co/Wi-zz/florence-2-auto-crop) model checkpoint for object-aware cropping. Point `--florence2-dir` at the model directory.
 
